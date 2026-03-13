@@ -82,7 +82,22 @@ def make_arpeggio(r_numeral, key):
 def get_dur(note_list):
     st = stream.Stream()
     st.append(note_list)
-    return st.duration
+    return deepcopy(st.duration)
+
+# def make_cello_part_old(note_list):
+#     rests = [n for n in note_list if n.isRest]
+#     all_notes = [n.transpose('-P15') for n in note_list if not n.isRest] # Transpose all notes down 2 octaves
+#     note1, note4, note7 = all_notes[::3] # take every third note from the 8-note source material
+#     note1.duration = duration.Duration(1)
+#     for n in [note1, note4, note7]: n.articulations.append(articulations.Staccato())
+#     if len(rests) > 1:
+#         rests = rests[:-2] # remove the last two rests because they are being replaced by the extra note below.
+#         extra = deepcopy(note1)
+#         cello_notes = [extra, note1, note.Rest(0.5, offset=None), note4, note.Rest(1, offset=None), note7, deepcopy(note7)]
+#     else:
+#         note1.duration = duration.Duration(1)
+#         cello_notes = [note1, note.Rest(0.5, offset=None), note4, note.Rest(1, offset=None), note7, deepcopy(note7)]
+#     return rests + cello_notes
 
 def make_cello_part(note_list):
     rests = [n for n in note_list if n.isRest]
@@ -90,27 +105,48 @@ def make_cello_part(note_list):
     note1, note4, note7 = all_notes[::3] # take every third note from the 8-note source material
     note1.duration = duration.Duration(1)
     for n in [note1, note4, note7]: n.articulations.append(articulations.Staccato())
-    if len(rests) > 1:
-        rests = rests[:-2]# remove the last two rests because they are being replaced by the extra note below.
-        extra = deepcopy(note1)
-        cello_notes = [extra, note1, note.Rest(0.5, offset=None), note4, note.Rest(1, offset=None), note7, deepcopy(note7)]
-    else:
-        note1.duration = duration.Duration(1)
-        cello_notes = [note1, note.Rest(0.5, offset=None), note4, note.Rest(1, offset=None), note7, deepcopy(note7)]
+    # if len(rests) > 1:
+    #     rests = rests[:-2] # remove the last two rests because they are being replaced by the extra note below.
+    #     extra = deepcopy(note1)
+    #     cello_notes = [extra, note1, note.Rest(0.5, offset=None), note4, note.Rest(1, offset=None), note7, deepcopy(note7)]
+    # else:
+    note1.duration = duration.Duration(1)
+    cello_notes = [note1, note.Rest(0.5, offset=None), note4, note.Rest(1, offset=None), note7, deepcopy(note7)]
     return rests + cello_notes
 
+def make_perc_figure(q_length):
+        notes = []
+        end_notes = [note.Unpitched(quarterLength=0.5, offset=None), note.Unpitched(quarterLength=0.5, offset=None)]
+        q_length -= 1
+        while q_length > 0:
+            for i in range(2): notes.append(note.Unpitched(quarterLength=0.25, offset=None))
+            q_length -= 0.5
+        return notes + end_notes
+
+# The structure of each melodic segment is:
+# [play variable number of rests, play melodic figure of 4-beats]
+# The first melodic segment contains no rests, the others all have at least one rest.
+#
+# The structure of percusions part is to play where melody rests, and to rest
+# where melody plays (apart from very last eight-note of melody which is an 8th note of percussion):
+# [play rhythmic figure, rest, play 8th note]
+# 
+# [get_dur(melody_rests), get_dur(melody_notes)- 0.5, 0.5]
 def make_perc_part(note_list):
-    rests = [n for n in note_list if n.isRest]
-    all_notes = [n for n in note_list if not n.isRest]
-    # end_note = all_notes.pop()
-    # rests.append(end_note)
+    melody_rests = [n for n in note_list if n.isRest]
+    melody_notes = [n for n in note_list if not n.isRest]
+    l_perc_figure, l_perc_rests, l_perc_end = [get_dur(melody_rests).quarterLength,
+                                        get_dur(melody_notes).quarterLength - 0.5, 0.5]
 
-    perc_rest = note.Rest(duration=get_dur(all_notes), offset=None)
-    perc_notes = note.Unpitched(duration=get_dur(rests), offset=None)
+    perc_rests = note.Rest(quarterLength=l_perc_rests, offset=None)
+    perc_end = note.Unpitched(quarterLength=l_perc_end, offset=None)
 
-    part = [n for n in [perc_notes, perc_rest] if n.quarterLength > 0]
-
-    return part
+    if l_perc_figure == 0:
+        return [perc_rests, perc_end]
+    else:
+        perc_figure = make_perc_figure(l_perc_figure)
+        return perc_figure + [perc_rests, perc_end]
+ 
 
 def make_score(key):
     arpeggioI = make_arpeggio('ii', key)
