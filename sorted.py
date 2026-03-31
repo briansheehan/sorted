@@ -21,6 +21,16 @@ ROMAN_NUMERALS = ['I', 'ii', 'iii', 'IV', 'V', 'vi', 'vii/o']
 
 DIATONIC_CHORDS = list(map(lambda n: roman.RomanNumeral(n+'13', 'C'), ROMAN_NUMERALS))
 
+def partition(a, pred):
+   ain = []
+   aout = []
+   for x in a:
+     if pred(x):
+       ain.append(x)
+     else:
+       aout.append(x)
+   return (ain, aout)
+
 def make_exec_rest(length=0.5):
     return note.Rest(length, offset=None)  
 
@@ -99,7 +109,22 @@ def get_dur(note_list):
 #         cello_notes = [note1, note.Rest(0.5, offset=None), note4, note.Rest(1, offset=None), note7, deepcopy(note7)]
 #     return rests + cello_notes
 
-def make_cello_part(note_list):
+# def make_cello_part(note_list):
+#     rests = [n for n in note_list if n.isRest]
+#     all_notes = [n.transpose('-P15') for n in note_list if not n.isRest] # Transpose all notes down 2 octaves
+#     note1, note4, note7 = all_notes[::3] # take every third note from the 8-note source material
+#     note1.duration = duration.Duration(1)
+#     for n in [note1, note4, note7]: n.articulations.append(articulations.Staccato())
+#     # if len(rests) > 1:
+#     #     rests = rests[:-2] # remove the last two rests because they are being replaced by the extra note below.
+#     #     extra = deepcopy(note1)
+#     #     cello_notes = [extra, note1, note.Rest(0.5, offset=None), note4, note.Rest(1, offset=None), note7, deepcopy(note7)]
+#     # else:
+#     note1.duration = duration.Duration(1)
+#     cello_notes = [note1, note.Rest(0.5, offset=None), note4, note.Rest(1, offset=None), note7, deepcopy(note7)]
+#     return rests + cello_notes
+
+def append_cello_part(part, note_list):
     rests = [n for n in note_list if n.isRest]
     all_notes = [n.transpose('-P15') for n in note_list if not n.isRest] # Transpose all notes down 2 octaves
     note1, note4, note7 = all_notes[::3] # take every third note from the 8-note source material
@@ -110,18 +135,21 @@ def make_cello_part(note_list):
     #     extra = deepcopy(note1)
     #     cello_notes = [extra, note1, note.Rest(0.5, offset=None), note4, note.Rest(1, offset=None), note7, deepcopy(note7)]
     # else:
-    note1.duration = duration.Duration(1)
     cello_notes = [note1, note.Rest(0.5, offset=None), note4, note.Rest(1, offset=None), note7, deepcopy(note7)]
-    return rests + cello_notes
+    if len(rests) > 0:
+        part.append(meter.TimeSignature(f'{len(rests)}/8'))
+        part.append(rests)
+    part.append(meter.TimeSignature('4/4'))
+    part.append(cello_notes)
 
 def make_perc_figure(q_length):
         notes = []
-        end_notes = [note.Unpitched(quarterLength=0.5, offset=None), note.Unpitched(quarterLength=0.5, offset=None)]
-        q_length -= 1
+        end_note = note.Unpitched(quarterLength=0.5, offset=None)
+        q_length -= 0.5
         while q_length > 0:
             for i in range(2): notes.append(note.Unpitched(quarterLength=0.25, offset=None))
             q_length -= 0.5
-        return notes + end_notes
+        return notes + [end_note]
 
 # The structure of each melodic segment is:
 # [play variable number of rests, play melodic figure of 4-beats]
@@ -147,20 +175,38 @@ def make_perc_part(note_list):
         perc_figure = make_perc_figure(l_perc_figure)
         return perc_figure + [perc_rests, perc_end]
  
+def append_perc_part(part, note_list):
+    (melody_rests, melody_notes) = partition(note_list, lambda n: n.isRest)
+    l_perc_figure, l_perc_rests, l_perc_end = [get_dur(melody_rests).quarterLength,
+                                        get_dur(melody_notes).quarterLength - 0.5, 0.5]
+
+    perc_rests = note.Rest(quarterLength=l_perc_rests, offset=None)
+    perc_end = note.Unpitched(quarterLength=l_perc_end, offset=None)
+
+    # if l_perc_figure == 0:
+    #     return [perc_rests, perc_end]
+    # else:
+    #     perc_figure = make_perc_figure(l_perc_figure)
+    #     return perc_figure + [perc_rests, perc_end]
+    if len(melody_rests) > 0:
+        part.append(meter.TimeSignature(f'{len(melody_rests)}/8'))
+        part.append(make_perc_figure(l_perc_figure))
+    part.append(meter.TimeSignature('4/4'))
+    part.append([perc_rests, perc_end])
 
 def make_score(key):
-    arpeggioI = make_arpeggio('ii', key)
-    rootI, thirdI, fifthI = deepcopy(arpeggioI[0:3])
-    rootI.duration = get_dur(arpeggioI)
-    thirdI.duration = get_dur(arpeggioI)
-    fifthI.duration = get_dur(arpeggioI)
+    arpegg_ii = make_arpeggio('ii', key)
+    rootI, thirdI, fifthI = deepcopy(arpegg_ii[0:3])
+    rootI.duration = get_dur(arpegg_ii)
+    thirdI.duration = get_dur(arpegg_ii)
+    fifthI.duration = get_dur(arpegg_ii)
     random.seed(1)
-    #random.shuffle(arpeggioI)
-    arpeggioI.sort(reverse=True)
+    #random.shuffle(arpegg_ii)
+    arpegg_ii.sort(reverse=True)
 
-    isort_lists = insertion_sort(deepcopy(arpeggioI))
-    bsort_lists = bubbleSort(deepcopy(arpeggioI))
-    ssort_lists = selectionSort(deepcopy(arpeggioI))
+    isort_lists = insertion_sort(deepcopy(arpegg_ii))
+    bsort_lists = bubbleSort(deepcopy(arpegg_ii))
+    ssort_lists = selectionSort(deepcopy(arpegg_ii))
 
     flute_part = stream.Part(instrument.Flute())
     violin_part = stream.Part(instrument.Violin())
@@ -181,15 +227,23 @@ def make_score(key):
         list(map(lambda part: part.append(dynamics.Dynamic('pp')), harmony_parts))     
 
         for note_list in note_lists:
-            melody_part.append(deepcopy(note_list))   
+            (rests, notes) = partition(note_list, lambda n: n.isRest)
+            if len(rests) > 0:
+                melody_part.append(meter.TimeSignature(f'{len(rests)}/8'))
+                melody_part.append(deepcopy(rests))
+            melody_part.append(meter.TimeSignature('4/4'))
+            melody_part.append(deepcopy(notes))
             for (hpart, hnote) in zip(harmony_parts, [fifthI, rootI]):
                 # hpart.append(note.Note(pitch, duration=duration.Duration(4)))
-                rests = [n for n in note_list if n.isRest]
-                hpart.append(deepcopy(rests))
+                if len(rests) > 0:
+                    hpart.append(meter.TimeSignature(f'{len(rests)}/8'))
+                    hpart.append(deepcopy(rests))
+                hpart.append(meter.TimeSignature('4/4'))
                 hpart.append(deepcopy(hnote))
             #perc_part.repeatAppend(note.Unpitched(duration=duration.Duration(0.5)), len(note_list))
-            cello_part.append(make_cello_part(deepcopy(note_list)))
-            perc_part.append(make_perc_part(note_list))
+            append_cello_part(cello_part, deepcopy(note_list))
+            # perc_part.append(make_perc_part(note_list))
+            append_perc_part(perc_part, deepcopy(note_list))
     
     for (part, note_lists) in zip(melody_parts, [isort_lists, bsort_lists, ssort_lists]):
         for note_list in note_lists:
