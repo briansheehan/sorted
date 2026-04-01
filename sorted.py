@@ -2,6 +2,7 @@ from music21 import *
 from copy import deepcopy
 import random
 import importlib as imp
+import math
 
 MUSE4_SCORES = '/home/brian/Documents/MuseScore4/Scores/'
 CHORD_SCORE = 'Diatonic Sevenths-Piano.mxl'
@@ -194,6 +195,50 @@ def append_perc_part(part, note_list):
     part.append(meter.TimeSignature('4/4'))
     part.append([perc_rests, perc_end])
 
+def concat(list_of_lists):
+    return [sum(l, []) for l in list_of_lists]
+
+
+def pad_to_length(target_len, note_list):
+    for i in range(target_len - len(note_list)):
+        note_list.append(note.Rest(0.5, offset=None))
+    return note_list
+
+def ceiling_multiple_of(multiplier, lower_limit):
+    rem = lower_limit % multiplier
+    if rem == 0:
+        return lower_limit
+    else:
+        return lower_limit - rem + multiplier
+
+def pad_to_longest(list_of_note_lists):
+    max_len = max(map(lambda nl: len(nl), list_of_note_lists))
+    target_len = ceiling_multiple_of(8, max_len)
+    #extra_eights = max_len % 8
+    #target_len = max_len - extra_eights + 8
+    return list(map(lambda nl: pad_to_length(target_len, nl), list_of_note_lists))
+
+def notes_to_rests(note_list):
+    return list(map(lambda n: note.Rest(quarterLength=n.quarterLength, offset=None), note_list))
+
+def strip_rests(note_list):
+    (rests, notes) = partition(note_list, lambda n: n.isRest)
+    if len(notes) % 8 != 0:
+        raise Exception(f"Phrase length is not a multiple of 8 quarter notes: {notes}")   
+    return notes
+
+def split_every(n:int, l):
+    return [l[i*n:(i+1)*n] for i in range(int(math.ceil(len(l) / n)))]
+
+#assumes every group of 8 notes is a melodic phrase
+def rm_dup_phrases(note_list):
+    phrases = split_every(8, note_list)
+    phrase_tuples = list(map(tuple, phrases))
+    no_dup_phrases = list(dict.fromkeys(phrase_tuples))
+    no_dup_phrases = list(map(list, no_dup_phrases))
+    return sum(list(no_dup_phrases), [])
+
+
 def make_score(key):
     arpegg_ii = make_arpeggio('ii', key)
     rootI, thirdI, fifthI = deepcopy(arpegg_ii[0:3])
@@ -218,6 +263,7 @@ def make_score(key):
     perc_part.append([clef.PercussionClef(), dynamics.Dynamic('mp')])
     perc_part.staffLines = 1
 
+    # Section 1
     for i, note_lists in enumerate([isort_lists, bsort_lists, ssort_lists]):
         melody_part = melody_parts[i]
         harmony_parts = list(melody_parts)
@@ -244,19 +290,37 @@ def make_score(key):
             append_cello_part(cello_part, deepcopy(note_list))
             # perc_part.append(make_perc_part(note_list))
             append_perc_part(perc_part, deepcopy(note_list))
-    
-    for (part, note_lists) in zip(melody_parts, [isort_lists, bsort_lists, ssort_lists]):
-        for note_list in note_lists:
-            part.append(deepcopy(note_list))
 
+    # Section 2    
+    [isort_list, bsort_list, ssort_list] = concat([isort_lists, bsort_lists, ssort_lists])
+    [isort_list, bsort_list, ssort_list] = pad_to_longest([isort_list, bsort_list, ssort_list])
+    for (part, note_list) in zip(melody_parts, [isort_list, bsort_list, ssort_list]):
+        for n in note_list:
+            part.append(deepcopy(n))
 
+    for part in [cello_part, perc_part]:
+        for n in isort_list:
+            part.append(note.Rest(0.5, offset=None))
 
+    # Section 3
+    [isort_list, bsort_list, ssort_list] = list(map(strip_rests, [isort_list, bsort_list, ssort_list]))
+    #[isort_list, bsort_list, ssort_list] = list(map(rm_dup_phrases, [isort_list, bsort_list, ssort_list]))
+    [isort_list, bsort_list, ssort_list] = pad_to_longest([isort_list, bsort_list, ssort_list])
+    cello_note_list = notes_to_rests(isort_list)
+    perc_note_list = deepcopy(cello_note_list)
+    for (part, note_list) in zip(melody_parts + (cello_part, perc_part),
+                                 [isort_list, bsort_list, ssort_list, cello_note_list, perc_note_list]):
+        for n in note_list:
+            part.append(deepcopy(n))
 
     score = stream.Score()
     for part in [flute_part, violin_part, tromb_part, cello_part, perc_part]:
+        #stream.makeNotation.consolidateCompletedTuplets(part, recurse=True)
         #part.makeMeasures(inPlace=True)
         #part.makeBeams(inPlace=True)
+        part.makeNotation(inPlace=True)
         score.insert(part)
+
     score.show()
 
 make_score('C')
