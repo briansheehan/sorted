@@ -143,7 +143,7 @@ def append_cello_part(part, note_list):
     part.append(meter.TimeSignature('4/4'))
     part.append(cello_notes)
 
-def make_perc_figure(q_length):
+def make_perc_figure_old(q_length):
         notes = []
         end_note = note.Unpitched(quarterLength=0.5, offset=None)
         q_length -= 0.5
@@ -151,6 +151,8 @@ def make_perc_figure(q_length):
             for i in range(2): notes.append(note.Unpitched(quarterLength=0.25, offset=None))
             q_length -= 0.5
         return notes + [end_note]
+
+
 
 # The structure of each melodic segment is:
 # [play variable number of rests, play melodic figure of 4-beats]
@@ -161,25 +163,9 @@ def make_perc_figure(q_length):
 # [play rhythmic figure, rest, play 8th note]
 # 
 # [get_dur(melody_rests), get_dur(melody_notes)- 0.5, 0.5]
-def make_perc_part(note_list):
-    melody_rests = [n for n in note_list if n.isRest]
-    melody_notes = [n for n in note_list if not n.isRest]
-    l_perc_figure, l_perc_rests, l_perc_end = [get_dur(melody_rests).quarterLength,
-                                        get_dur(melody_notes).quarterLength - 0.5, 0.5]
-
-    perc_rests = note.Rest(quarterLength=l_perc_rests, offset=None)
-    perc_end = note.Unpitched(quarterLength=l_perc_end, offset=None)
-
-    if l_perc_figure == 0:
-        return [perc_rests, perc_end]
-    else:
-        perc_figure = make_perc_figure(l_perc_figure)
-        return perc_figure + [perc_rests, perc_end]
- 
-def append_perc_part(part, note_list):
+def append_perc_part_old(part, note_list):
     (melody_rests, melody_notes) = partition(note_list, lambda n: n.isRest)
-    l_perc_figure, l_perc_rests, l_perc_end = [get_dur(melody_rests).quarterLength,
-                                        get_dur(melody_notes).quarterLength - 0.5, 0.5]
+    l_perc_figure, l_perc_rests, l_perc_end = get_dur(melody_rests).quarterLength, get_dur(melody_notes).quarterLength - 0.5, 0.5
 
     perc_rests = note.Rest(quarterLength=l_perc_rests, offset=None)
     perc_end = note.Unpitched(quarterLength=l_perc_end, offset=None)
@@ -191,12 +177,59 @@ def append_perc_part(part, note_list):
     #     return perc_figure + [perc_rests, perc_end]
     if len(melody_rests) > 0:
         part.append(meter.TimeSignature(f'{len(melody_rests)}/8'))
-        part.append(make_perc_figure(l_perc_figure))
+        part.append(make_perc_figure_old(l_perc_figure))
     part.append(meter.TimeSignature('4/4'))
     part.append([perc_rests, perc_end])
 
+def make_perc_solo(num_of_eights:int):
+    quot, rem = divmod(num_of_eights, 2)
+    eights = [0.5 for i in range(0, quot)]
+    sixteenths = [0.25 for i in range(0, rem)] # Will be one sixteenth, or none
+    figure =  eights + sixteenths + eights + sixteenths
+    figure_notes = [note.Unpitched(quarterLength=l, offset=None) for l in figure]
+    [n.articulations.append(articulations.Accent()) for n in figure_notes[::quot+rem]] 
+    return figure_notes
+
+def make_compound_measure(num_of_eights:int):
+    quot, rem = divmod(num_of_eights, 2)
+    eights = [0.5 for i in range(0, quot)]
+    sixteenths = [0.25 for i in range(0, rem)] # Will be one sixteenth, or none
+
+    m = stream.Measure()
+    m.staffLines = 1
+    ts = meter.TimeSignature(f'{num_of_eights}/8')
+    ts.beamSequence.partition([f'{len(eights)}/8', f'{len(sixteenths)}/16', f'{len(eights)}/8', f'{len(sixteenths)}/16'])
+    #ts.beamSequence[0] = ts.beamSequence[0].subdivide([f'{len(eights)}/8', f'{len(sixteenths)}/16'])
+    #ts.beamSequence[1] = ts.beamSequence[1].subdivide([f'{len(eights)}/8', f'{len(sixteenths)}/16'])
+    m.timeSignature = ts    
+    return m
+
+def append_perc_part(part, note_list):
+    melody_rests, melody_notes = partition(note_list, lambda n: n.isRest)
+    l_perc_solo = len(melody_rests)
+
+    if l_perc_solo > 0:
+        m = make_compound_measure(l_perc_solo)
+        m.append(make_perc_solo(l_perc_solo))
+        part.append(m.makeBeams())
+        #part.append(meter.TimeSignature(f'{l_perc_solo}/8'))
+        #m.append(make_perc_solo(l_perc_solo))
+
+    l_perc_start = l_perc_end = 1 # 1 eight note
+    l_perc_rests = len(melody_notes) - l_perc_start - l_perc_end
+    
+    perc_start = note.Unpitched(quarterLength=l_perc_start/2, offset=None) 
+    perc_start.articulations.append(articulations.Accent())  
+    perc_rests = note.Rest(quarterLength=l_perc_rests/2, offset=None)
+    perc_end = note.Unpitched(quarterLength=l_perc_end/2, offset=None)
+    m = stream.Measure()
+    m.stafflines = 1
+    m.append(meter.TimeSignature('4/4'))
+    m.append([perc_start, perc_rests, perc_end])
+    part.append(m.makeBeams())
+
 def concat(list_of_lists):
-    return [sum(l, []) for l in list_of_lists]
+    return sum(list_of_lists, [])
 
 
 def pad_to_length(target_len, note_list):
@@ -236,7 +269,7 @@ def rm_dup_phrases(note_list):
     phrase_tuples = list(map(tuple, phrases))
     no_dup_phrases = list(dict.fromkeys(phrase_tuples))
     no_dup_phrases = list(map(list, no_dup_phrases))
-    return sum(list(no_dup_phrases), [])
+    return concat(no_dup_phrases)
 
 
 def make_score(key):
@@ -292,7 +325,7 @@ def make_score(key):
             append_perc_part(perc_part, deepcopy(note_list))
 
     # Section 2    
-    [isort_list, bsort_list, ssort_list] = concat([isort_lists, bsort_lists, ssort_lists])
+    [isort_list, bsort_list, ssort_list] = list(map(concat, [isort_lists, bsort_lists, ssort_lists]))
     [isort_list, bsort_list, ssort_list] = pad_to_longest([isort_list, bsort_list, ssort_list])
     for (part, note_list) in zip(melody_parts, [isort_list, bsort_list, ssort_list]):
         for n in note_list:
