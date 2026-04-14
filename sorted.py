@@ -36,7 +36,7 @@ def make_exec_rest(length=0.5):
     return note.Rest(length, offset=None)  
 
 def bubbleSort(arr):
-    intermediate_lists = [arr.copy()]
+    intermediate_lists = [deepcopy(arr)]
     n = len(arr)
     for i in range(n):
         rests = []
@@ -45,12 +45,12 @@ def bubbleSort(arr):
             if arr[j] > arr[j + 1]:
                 arr[j], arr[j + 1] = arr[j + 1], arr[j]; rests.append(make_exec_rest())
                 swapped = True; rests.append(make_exec_rest())
-        intermediate_lists.append(rests + arr.copy())
+        intermediate_lists.append(rests + deepcopy(arr))
         if not swapped:
             return intermediate_lists
 
 def insertion_sort(arr):
-    intermediate_lists = [arr.copy()]
+    intermediate_lists = [deepcopy(arr)]
     # using for loop until len(arr)
     # but start from 1 (cause we gonna compare it with i-1)
     for i in range(1, len(arr)):
@@ -62,14 +62,14 @@ def insertion_sort(arr):
         while j >= 0 and key < arr[j]:
             arr[j + 1] = arr[j]; rests.append(make_exec_rest()) # replace every array[j+1] with [j]
             j -= 1;rests.append(make_exec_rest()) # until j = 0 OR key > array[j]
-            #intermediate_lists.append(arr.copy())
+            #intermediate_lists.append(deepcopy(arr))
         arr[j + 1] = key; rests.append(make_exec_rest()) # insert key on array[j+1]
-        intermediate_lists.append(rests + arr.copy())
+        intermediate_lists.append(rests + deepcopy(arr))
     return intermediate_lists
 
 def selectionSort(arr):
     size = len(arr)
-    intermediate_lists = [arr.copy()]
+    intermediate_lists = [deepcopy(arr)]
     for ind in range(size):
         rests = []  
         min_index = ind; rests.append(make_exec_rest())
@@ -78,7 +78,7 @@ def selectionSort(arr):
             if arr[j] < arr[min_index]:
                 min_index = j; rests.append(make_exec_rest())
         arr[ind], arr[min_index] = arr[min_index], arr[ind]; rests.append(make_exec_rest())
-        intermediate_lists.append(rests + arr.copy())
+        intermediate_lists.append(rests + deepcopy(arr))
     return intermediate_lists
 
 def make_arpeggio(r_numeral, key):
@@ -90,22 +90,26 @@ def make_arpeggio(r_numeral, key):
 # def make_notes(pitch_list):
 #     return list(map(lambda p: note.Note(p, type='eighth'), pitch_list))
 
-def get_dur(note_list):
+#<music21.stream.Stream 0x7bf3db1bb380>
+def get_q_length(note_list):
     st = stream.Stream()
-    st.append(note_list)
-    return deepcopy(st.duration)
+    st.append(deepcopy(note_list))
+    return st.duration.quarterLength
 
+CELLO_RHYTHM = [1, 0.5, 0.5, 1, 0.25, 0.25, 0.25, 0.25]
 
 def append_cello_part(part, note_list):
     rests = [n for n in note_list if n.isRest]
     all_notes = [n.transpose('-P15') for n in note_list if not n.isRest] # Transpose all notes down 2 octaves
     note1, note4, note7 = all_notes[::3] # take every third note from the 8-note source material
-    note1.duration = duration.Duration(1)
-    note7.duration = duration.Duration(0.25)
+
     for n in [note1, note4]: n.articulations.append(articulations.Staccato())
 
-    cello_notes = [note1, note.Rest(0.5, offset=None), note4, note.Rest(1, offset=None),
+    cello_notes = [note1, note.Rest(offset=None), note4, note.Rest(offset=None),
                    note7, deepcopy(note7), deepcopy(note7), deepcopy(note7)]
+    
+    for c_note, q_length in zip(cello_notes, CELLO_RHYTHM): c_note.quarterLength = q_length
+
     if len(rests) > 0:
         part.append(meter.TimeSignature(f'{len(rests)}+{len(rests)}/16'))
         part.append(rests)
@@ -120,7 +124,7 @@ def append_cello_part(part, note_list):
 # where melody plays (apart from very last eight-note of melody which is an 8th note of percussion):
 # [play rhythmic figure, rest, play 8th note]
 # 
-# [get_dur(melody_rests), get_dur(melody_notes)- 0.5, 0.5]
+# [get_q_length(melody_rests), get_q_length(melody_notes)- 0.5, 0.5]
 
 def make_perc_solo(num_of_eights:int):
     quot, rem = divmod(num_of_eights, 2)
@@ -131,79 +135,36 @@ def make_perc_solo(num_of_eights:int):
     [n.articulations.append(articulations.Accent()) for n in figure_notes[::quot+rem]] 
     return figure_notes
 
-def make_compound_measure(num_of_eights:int):
-    quot, rem = divmod(num_of_eights, 2)
-    eights = [0.5 for i in range(0, quot)]
-    sixteenths = [0.25 for i in range(0, rem)] # Will be one sixteenth, or none
+# def compound_partition(num_of_eights:int):
+#     quot, rem = divmod(num_of_eights, 2)
+#     eights = [0.5 for i in range(0, quot)]
+#     sixteenths = [0.25 for i in range(0, rem)] # Will be one sixteenth, or none
 
-    m = stream.Measure()
-    m.staffLines = 1
-    ts = meter.TimeSignature(f'{num_of_eights}/8')
-    ts.beamSequence.partition([f'{len(eights)}/8', f'{len(sixteenths)}/16', f'{len(eights)}/8', f'{len(sixteenths)}/16'])
-    #ts.beamSequence[0] = ts.beamSequence[0].subdivide([f'{len(eights)}/8', f'{len(sixteenths)}/16'])
-    #ts.beamSequence[1] = ts.beamSequence[1].subdivide([f'{len(eights)}/8', f'{len(sixteenths)}/16'])
-    m.timeSignature = ts    
-    return m
+#     match num_of_eights:
+#         case 5:
+#             p_list = '5/16+5/16'
+#             #p_list = [f'{len(eights)}/8', f'{len(sixteenths)}/16', f'{len(eights)}/8', f'{len(sixteenths)}/16']
+#         case 7:
+#             p_list = ['3/8', '7/16', '1/16' ]
+#         case 9:
+#             p_list = ['1/2', '1/16', '1/2', '1/16']
+#         case _:
+#             p_list =[f'{num_of_eights}/8']
 
-# def append_perc_part_old(part, note_list):
-#     melody_rests, melody_notes = partition(note_list, lambda n: n.isRest)
-#     l_perc_solo = len(melody_rests)
-
-#     if l_perc_solo > 0:
-#         m = make_compound_measure(l_perc_solo)
-#         m.append(make_perc_solo(l_perc_solo))
-#         part.append(m.makeBeams())
-#         #part.append(meter.TimeSignature(f'{l_perc_solo}/8'))
-#         #m.append(make_perc_solo(l_perc_solo))
-
-#     l_perc_start = l_perc_end = 1 # 1 eight note
-#     l_perc_rests = len(melody_notes) - l_perc_start - l_perc_end
-    
-#     perc_start = note.Unpitched(quarterLength=l_perc_start/2, offset=None) 
-#     perc_start.articulations.append(articulations.Accent())  
-#     perc_rests = note.Rest(quarterLength=l_perc_rests/2, offset=None)
-#     perc_end = note.Unpitched(quarterLength=l_perc_end/2, offset=None)
-#     m = stream.Measure()
-#     m.stafflines = 1
-#     m.append(meter.TimeSignature('4/4'))
-#     m.append([perc_start, perc_rests, perc_end])
-#     part.append(m.makeBeams())
-
-def compound_partition(num_of_eights:int):
-    quot, rem = divmod(num_of_eights, 2)
-    eights = [0.5 for i in range(0, quot)]
-    sixteenths = [0.25 for i in range(0, rem)] # Will be one sixteenth, or none
-
-    match num_of_eights:
-        case 5:
-            p_list = '5/16+5/16'
-            #p_list = [f'{len(eights)}/8', f'{len(sixteenths)}/16', f'{len(eights)}/8', f'{len(sixteenths)}/16']
-        case 7:
-            p_list = ['3/8', '7/16', '1/16' ]
-        case 9:
-            p_list = ['1/2', '1/16', '1/2', '1/16']
-        case _:
-            p_list =[f'{num_of_eights}/8']
-
-    return p_list
+#     return p_list
 
 
-def beam_time_sig(ts: meter.TimeSignature):
-    match ts.denominator:
-        case 8:
-            ts.beamSequence.partition(compound_partition(ts.numerator)) 
-    return ts
+# def beam_time_sig(ts: meter.TimeSignature):
+#     match ts.denominator:
+#         case 8:
+#             ts.beamSequence.partition(compound_partition(ts.numerator)) 
+#     return ts
 
-def append_perc_part(part, note_list):
+def append_sect1_perc(part, note_list):
     melody_rests, melody_notes = partition(note_list, lambda n: n.isRest)
     l_perc_solo = len(melody_rests)
 
     if l_perc_solo > 0:
-        # m = make_compound_measure(l_perc_solo)
-        # m.append(make_perc_solo(l_perc_solo))
-        # part.append(m.makeBeams())
-        # part.append(meter.TimeSignature(f'{l_perc_solo}/8'))
-        #part.append(beam_time_sig(meter.TimeSignature(f'{l_perc_solo}+{l_perc_solo}/16')))
         ts = meter.TimeSignature(f'{l_perc_solo}+{l_perc_solo}/16')
         ts.beamSequence.partition(2)
         part.append(ts)
@@ -223,12 +184,17 @@ def append_perc_part(part, note_list):
     part.append([perc_start, perc_rests, perc_end])
     # part.append(m.makeBeams())
 
+def make_sect2_perc(note_list):
+    rhythm_fig = [note.Unpitched(quarterLength=1.5), note.Unpitched(quarterLength=0.5), note.Unpitched(quarterLength=1.5), note.Unpitched(quarterLength=0.5)]
+    melody_rests, melody_notes = partition(note_list, lambda n: n.isRest)
+    return melody_rests + rhythm_fig
+
 def concat(list_of_lists):
     return sum(list_of_lists, [])
 
 
 def pad_to_length(target_len, note_list):
-    for i in range(target_len - len(note_list)):
+    for i in range(target_len - int(get_q_length(note_list) * 2)):
         note_list.append(note.Rest(0.5, offset=None))
     return note_list
 
@@ -240,10 +206,11 @@ def ceiling_multiple_of(multiplier, lower_limit):
         return lower_limit - rem + multiplier
 
 def pad_to_longest(list_of_note_lists):
-    max_len = max(map(lambda nl: len(nl), list_of_note_lists))
-    target_len = ceiling_multiple_of(8, max_len)
-    #extra_eights = max_len % 8
-    #target_len = max_len - extra_eights + 8
+    # max_len = max(map(lambda nl: len(nl), list_of_note_lists))
+    max_len = max(map(lambda nl: get_q_length(nl), list_of_note_lists))
+    max_len_eight_notes = int(2*max_len)
+    target_len = ceiling_multiple_of(8, max_len_eight_notes)
+
     return list(map(lambda nl: pad_to_length(target_len, nl), list_of_note_lists))
 
 def notes_to_rests(note_list):
@@ -270,9 +237,9 @@ def rm_dup_phrases(note_list):
 def make_score(key):
     arpegg_ii = make_arpeggio('ii', key)
     rootI, thirdI, fifthI = deepcopy(arpegg_ii[0:3])
-    rootI.duration = get_dur(arpegg_ii)
-    thirdI.duration = get_dur(arpegg_ii)
-    fifthI.duration = get_dur(arpegg_ii)
+    rootI.quarterLength = get_q_length(arpegg_ii)
+    thirdI.quarterLength = get_q_length(arpegg_ii)
+    fifthI.quarterLength = get_q_length(arpegg_ii)
     random.seed(100)
     #random.shuffle(arpegg_ii)
     arpegg_ii.sort(reverse=True)
@@ -317,36 +284,54 @@ def make_score(key):
             #perc_part.repeatAppend(note.Unpitched(duration=duration.Duration(0.5)), len(note_list))
             append_cello_part(cello_part, deepcopy(note_list))
             # perc_part.append(make_perc_part(note_list))
-            append_perc_part(perc_part, deepcopy(note_list))
+            append_sect1_perc(perc_part, deepcopy(note_list))
 
-    # Section 2    
-    [isort_list, bsort_list, ssort_list] = list(map(concat, [isort_lists, bsort_lists, ssort_lists]))
-    [isort_list, bsort_list, ssort_list] = pad_to_longest([isort_list, bsort_list, ssort_list])
-    for (part, note_list) in zip(melody_parts, [isort_list, bsort_list, ssort_list]):
+    # Section 2
+    perc_note_lists = []
+    for note_list in ssort_lists: # ssort_lists is the material used for the trombone part
+        perc_note_lists.append(make_sect2_perc(deepcopy(note_list)))
+  
+    [isort_list, bsort_list, ssort_list, perc_note_list] = list(map(concat, [isort_lists, bsort_lists, ssort_lists, perc_note_lists]))
+    pnl = get_q_length(perc_note_list)
+    ssl = get_q_length(ssort_list)
+    [isort_list, bsort_list, ssort_list, perc_note_list] = pad_to_longest([isort_list, bsort_list, ssort_list, perc_note_list])
+    for (part, note_list) in zip(melody_parts + (perc_part,), [isort_list, bsort_list, ssort_list, perc_note_list]):
         for n in note_list:
             part.append(deepcopy(n))
 
-    for part in [cello_part, perc_part]:
-        for n in isort_list:
-            part.append(note.Rest(0.5, offset=None))
+    # for part in [cello_part, perc_part]:
+    #     for n in isort_list:
+    #         part.append(note.Rest(0.5, offset=None))
+
+    for n in isort_list:
+        cello_part.append(note.Rest(0.5, offset=None))
+    
+
+    # perc_note_list = [note.Unpitched(quarterLength=1), note.Unpitched(quarterLength=0.5), note.Unpitched(quarterLength=0.5),
+    #                   note.Unpitched(quarterLength=1), note.Rest(quarterLength=0.5), note.Unpitched(quarterLength=0.5)]
+    # perc_note_list = [note.Unpitched(quarterLength=1.5), note.Unpitched(quarterLength=0.5), note.Unpitched(quarterLength=1.5), note.Unpitched(quarterLength=0.5)]
+    # for bar in isort_list[::8]:
+    #     perc_part.append(deepcopy(perc_note_list))    
+    
 
     # Section 3
     [isort_list, bsort_list, ssort_list] = list(map(strip_rests, [isort_list, bsort_list, ssort_list]))
     #[isort_list, bsort_list, ssort_list] = list(map(rm_dup_phrases, [isort_list, bsort_list, ssort_list]))
     [isort_list, bsort_list, ssort_list] = pad_to_longest([isort_list, bsort_list, ssort_list])
     cello_note_list = notes_to_rests(isort_list)
-    perc_note_list = deepcopy(cello_note_list)
-    for (part, note_list) in zip(melody_parts + (cello_part, perc_part),
-                                 [isort_list, bsort_list, ssort_list, cello_note_list, perc_note_list]):
+    #perc_note_list = deepcopy(cello_note_list)
+    for (part, note_list) in zip(melody_parts + (cello_part,),
+                                 [isort_list, bsort_list, ssort_list, cello_note_list]):
         for n in note_list:
             part.append(deepcopy(n))
+    
+    perc_note_list = [note.Unpitched(quarterLength=0.5), note.Unpitched(quarterLength=0.5), note.Unpitched(quarterLength=0.5), note.Unpitched(quarterLength=0.25),
+                    note.Unpitched(quarterLength=0.5), note.Unpitched(quarterLength=0.5), note.Unpitched(quarterLength=0.5), note.Unpitched(quarterLength=0.5), note.Unpitched(quarterLength=0.25)]
+    for bar in isort_list[::8]:
+        perc_part.append(deepcopy(perc_note_list))   
 
     score = stream.Score()
     for part in [flute_part, violin_part, tromb_part, cello_part, perc_part]:
-        #stream.makeNotation.consolidateCompletedTuplets(part, recurse=True)
-        #part.makeMeasures(inPlace=True)
-        #part.makeBeams(inPlace=True)
-        part.makeNotation(inPlace=True)
         score.insert(part)
 
     score.show()
