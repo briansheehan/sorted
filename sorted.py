@@ -87,10 +87,6 @@ def make_arpeggio(r_numeral, key):
     chord_pitches.append(pitch.Pitch(step=chord.root().step, octave=chord.root().octave + 2))
     return list(map(lambda p: note.Note(p, type='eighth', offset=None), chord_pitches))
 
-# def make_notes(pitch_list):
-#     return list(map(lambda p: note.Note(p, type='eighth'), pitch_list))
-
-#<music21.stream.Stream 0x7bf3db1bb380>
 def get_q_length(note_list):
     st = stream.Stream()
     st.append(deepcopy(note_list))
@@ -228,11 +224,21 @@ def split_every(n:int, l):
 #assumes every group of 8 notes is a melodic phrase
 def rm_dup_phrases(note_list):
     phrases = split_every(8, note_list)
-    phrase_tuples = list(map(tuple, phrases))
-    no_dup_phrases = list(dict.fromkeys(phrase_tuples))
-    no_dup_phrases = list(map(list, no_dup_phrases))
-    return concat(no_dup_phrases)
+    for p in phrases:
+        while phrases.count(p) > 1:
+            phrases.remove(p)
+    no_dups = concat(phrases)
+    return no_dups
 
+
+def append_slurred_notes(part, note_list):
+    nl_copy = deepcopy(note_list)
+    slur = spanner.Slur(nl_copy)    
+    part.append(nl_copy)
+    part.insert(0, slur)
+
+def make_intro(note_list):
+    return note_list
 
 def make_score(key):
     arpegg_ii = make_arpeggio('ii', key)
@@ -258,6 +264,12 @@ def make_score(key):
     perc_part.append([clef.PercussionClef(), dynamics.Dynamic('mp')])
     perc_part.staffLines = 1
 
+    # # Intro Section
+    # flute_intro = make_intro(deepcopy(isort_lists))
+    # for (part, note_list) in zip(melody_parts, [flute_intro, flute_intro, flute_intro]):
+    #     part.append(concat(note_list))
+
+
     # Section 1
     for i, note_lists in enumerate([isort_lists, bsort_lists, ssort_lists]):
         melody_part = melody_parts[i]
@@ -273,7 +285,10 @@ def make_score(key):
                 melody_part.append(meter.TimeSignature(f'{len(rests)}+{len(rests)}/16'))
                 melody_part.append(deepcopy(rests))
             melody_part.append(meter.TimeSignature('4/4'))
-            melody_part.append(deepcopy(notes))
+            notes_copy = deepcopy(notes) 
+            slur = spanner.Slur(notes_copy)
+            melody_part.append(notes_copy)
+            melody_part.insert(0, slur)
             for (hpart, hnote) in zip(harmony_parts, [fifthI, rootI]):
                 # hpart.append(note.Note(pitch, duration=duration.Duration(4)))
                 if len(rests) > 0:
@@ -291,44 +306,45 @@ def make_score(key):
     for note_list in ssort_lists: # ssort_lists is the material used for the trombone part
         perc_note_lists.append(make_sect2_perc(deepcopy(note_list)))
   
+ 
     [isort_list, bsort_list, ssort_list, perc_note_list] = list(map(concat, [isort_lists, bsort_lists, ssort_lists, perc_note_lists]))
-    pnl = get_q_length(perc_note_list)
-    ssl = get_q_length(ssort_list)
+
     [isort_list, bsort_list, ssort_list, perc_note_list] = pad_to_longest([isort_list, bsort_list, ssort_list, perc_note_list])
     for (part, note_list) in zip(melody_parts + (perc_part,), [isort_list, bsort_list, ssort_list, perc_note_list]):
-        for n in note_list:
-            part.append(deepcopy(n))
-
-    # for part in [cello_part, perc_part]:
-    #     for n in isort_list:
-    #         part.append(note.Rest(0.5, offset=None))
+        part.append(deepcopy(note_list))
+        # for n in note_list:
+        #     part.append(deepcopy(n))
 
     for n in isort_list:
         cello_part.append(note.Rest(0.5, offset=None))
     
-
-    # perc_note_list = [note.Unpitched(quarterLength=1), note.Unpitched(quarterLength=0.5), note.Unpitched(quarterLength=0.5),
-    #                   note.Unpitched(quarterLength=1), note.Rest(quarterLength=0.5), note.Unpitched(quarterLength=0.5)]
-    # perc_note_list = [note.Unpitched(quarterLength=1.5), note.Unpitched(quarterLength=0.5), note.Unpitched(quarterLength=1.5), note.Unpitched(quarterLength=0.5)]
-    # for bar in isort_list[::8]:
-    #     perc_part.append(deepcopy(perc_note_list))    
-    
-
+  
     # Section 3
+    [isort_list, bsort_list, ssort_list] = list(map(concat, [list(reversed(deepcopy(isort_lists))), list(reversed(deepcopy(bsort_lists))), list(reversed(deepcopy(ssort_lists)))]))
     [isort_list, bsort_list, ssort_list] = list(map(strip_rests, [isort_list, bsort_list, ssort_list]))
-    #[isort_list, bsort_list, ssort_list] = list(map(rm_dup_phrases, [isort_list, bsort_list, ssort_list]))
+    [isort_list, bsort_list, ssort_list] = list(map(rm_dup_phrases, [isort_list, bsort_list, ssort_list]))
+    [isort_list, bsort_list, ssort_list] = list(map(lambda l: l[8:], [isort_list, bsort_list, ssort_list])) # Remove the first 8 quarter note phrase from each note list
     [isort_list, bsort_list, ssort_list] = pad_to_longest([isort_list, bsort_list, ssort_list])
     cello_note_list = notes_to_rests(isort_list)
     #perc_note_list = deepcopy(cello_note_list)
     for (part, note_list) in zip(melody_parts + (cello_part,),
                                  [isort_list, bsort_list, ssort_list, cello_note_list]):
-        for n in note_list:
-            part.append(deepcopy(n))
+        part.append(deepcopy(note_list))
+        # for n in note_list:
+        #     part.append(deepcopy(n))
     
     perc_note_list = [note.Unpitched(quarterLength=0.5), note.Unpitched(quarterLength=0.5), note.Unpitched(quarterLength=0.5), note.Unpitched(quarterLength=0.25),
                     note.Unpitched(quarterLength=0.5), note.Unpitched(quarterLength=0.5), note.Unpitched(quarterLength=0.5), note.Unpitched(quarterLength=0.5), note.Unpitched(quarterLength=0.25)]
     for bar in isort_list[::8]:
-        perc_part.append(deepcopy(perc_note_list))   
+        perc_part.append(deepcopy(perc_note_list))
+
+    for (part, note_list) in zip(melody_parts + (cello_part,),
+                                [isort_list, bsort_list, ssort_list, cello_note_list]):
+        for n in note_list:
+            n.quarterLength *= 2
+
+        part.append(deepcopy(note_list))
+
 
     score = stream.Score()
     for part in [flute_part, violin_part, tromb_part, cello_part, perc_part]:
@@ -337,10 +353,6 @@ def make_score(key):
     score.show()
 
 make_score('C')
-
-#make_first_score()
-    # for chord in score.recurse().getElementsByClass(chord.Chord):
-    #     print(chord)
 
 
 def mergeSort(arr):
