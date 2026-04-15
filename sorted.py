@@ -194,6 +194,7 @@ def pad_to_length(target_len, note_list):
         note_list.append(note.Rest(0.5, offset=None))
     return note_list
 
+# Nearest multiple of multiplier above or equal to lower_limit
 def ceiling_multiple_of(multiplier, lower_limit):
     rem = lower_limit % multiplier
     if rem == 0:
@@ -201,34 +202,48 @@ def ceiling_multiple_of(multiplier, lower_limit):
     else:
         return lower_limit - rem + multiplier
 
-def pad_to_longest(list_of_note_lists):
-    # max_len = max(map(lambda nl: len(nl), list_of_note_lists))
-    max_len = max(map(lambda nl: get_q_length(nl), list_of_note_lists))
-    max_len_eight_notes = int(2*max_len)
-    target_len = ceiling_multiple_of(8, max_len_eight_notes)
+def fill_last_bar(note_lists, bar_q_len=4):
+    total_q_len = sum(map(get_q_length, note_lists))
+    fill_q_len = ceiling_multiple_of(bar_q_len, total_q_len) - total_q_len
+    last_phrase_e_len = 2*(get_q_length(note_lists[-1]) + fill_q_len)
+    pad_to_length(int(last_phrase_e_len), note_lists[-1])    
+    return note_lists
 
-    return list(map(lambda nl: pad_to_length(target_len, nl), list_of_note_lists))
+# def pad_to_longest(list_of_note_lists):
+#     # max_len = max(map(lambda nl: len(nl), list_of_note_lists))
+#     max_len = max(map(lambda nl: get_q_length(nl), list_of_note_lists))
+#     max_len_eight_notes = int(2*max_len)
+#     target_len = ceiling_multiple_of(8, max_len_eight_notes)
+#     return list(map(lambda nl: pad_to_length(target_len, nl), list_of_note_lists))
+
+
+def pad_to_longest_new(list_of_note_lists):
+    # max_len = max(map(lambda nl: len(nl), list_of_note_lists))
+    max_len = max(map(lambda nl: len(nl), list_of_note_lists))
+    bar_length = get_q_length(list_of_note_lists[0][0])
+    for note_lists in list_of_note_lists:
+        for i in range(len(note_lists), max_len):
+            note_lists.append([note.Rest(bar_length)])
+    return list_of_note_lists
 
 def notes_to_rests(note_list):
     return list(map(lambda n: note.Rest(quarterLength=n.quarterLength, offset=None), note_list))
 
 def strip_rests(note_list):
     (rests, notes) = partition(note_list, lambda n: n.isRest)
-    if len(notes) % 8 != 0:
-        raise Exception(f"Phrase length is not a multiple of 8 quarter notes: {notes}")   
+    # if len(notes) % 8 != 0:
+    #     raise Exception(f"Phrase length is not a multiple of 8 quarter notes: {notes}")   
     return notes
 
 def split_every(n:int, l):
     return [l[i*n:(i+1)*n] for i in range(int(math.ceil(len(l) / n)))]
 
-#assumes every group of 8 notes is a melodic phrase
-def rm_dup_phrases(note_list):
-    phrases = split_every(8, note_list)
+# Takes a list of note lists, considers each note list a phrase.
+def rm_dup_phrases(phrases):
     for p in phrases:
         while phrases.count(p) > 1:
             phrases.remove(p)
-    no_dups = concat(phrases)
-    return no_dups
+    return phrases
 
 
 def append_slurred_notes(part, note_list):
@@ -239,6 +254,10 @@ def append_slurred_notes(part, note_list):
 
 def make_intro(note_list):
     return note_list
+
+def scale_q_length(n:note.Note, factor):
+    n.quarterLength *= factor
+    return n
 
 def make_score(key):
     arpegg_ii = make_arpeggio('ii', key)
@@ -302,48 +321,67 @@ def make_score(key):
             append_sect1_perc(perc_part, deepcopy(note_list))
 
     # Section 2
-    perc_note_lists = []
-    for note_list in ssort_lists: # ssort_lists is the material used for the trombone part
-        perc_note_lists.append(make_sect2_perc(deepcopy(note_list)))
-  
+    # perc_note_lists = []
+    # for note_list in ssort_lists: # ssort_lists is the material used for the trombone part
+    #     perc_note_lists.append(make_sect2_perc(deepcopy(note_list)))
+    perc_note_lists = [make_sect2_perc(deepcopy(nl)) for nl in isort_lists] 
  
-    [isort_list, bsort_list, ssort_list, perc_note_list] = list(map(concat, [isort_lists, bsort_lists, ssort_lists, perc_note_lists]))
+    #[isort_list, bsort_list, ssort_list, perc_note_list] = list(map(concat, [isort_lists, bsort_lists, ssort_lists, perc_note_lists]))
+    isort_lists, bsort_lists, ssort_lists = list(map(lambda note_lists: fill_last_bar(note_lists), [isort_lists, bsort_lists, ssort_lists]))
+    #[isort_list, bsort_list, ssort_list, perc_note_list] = pad_to_longest([isort_list, bsort_list, ssort_list, perc_note_list])
+    concat_lists = list(map(concat, [isort_lists, bsort_lists, ssort_lists]))
+    isort_lists, bsort_lists, ssort_lists = list(map(lambda n_l: split_every(8, n_l), concat_lists))    
+    isort_lists, bsort_lists, ssort_lists = pad_to_longest_new([isort_lists, bsort_lists, ssort_lists])
+    #perc_note_lists = [make_sect2_perc(deepcopy(nl)) for nl in ssort_lists]
+    cello_note_lists = list(map(notes_to_rests, isort_lists))
 
-    [isort_list, bsort_list, ssort_list, perc_note_list] = pad_to_longest([isort_list, bsort_list, ssort_list, perc_note_list])
-    for (part, note_list) in zip(melody_parts + (perc_part,), [isort_list, bsort_list, ssort_list, perc_note_list]):
-        part.append(deepcopy(note_list))
+    for (part, note_lists) in zip(melody_parts + (cello_part, perc_part), [isort_lists, bsort_lists, ssort_lists, cello_note_lists, perc_note_lists]):
+        for note_list in note_lists: part.append(deepcopy(note_list))
         # for n in note_list:
         #     part.append(deepcopy(n))
-
-    for n in isort_list:
-        cello_part.append(note.Rest(0.5, offset=None))
-    
   
     # Section 3
-    [isort_list, bsort_list, ssort_list] = list(map(concat, [list(reversed(deepcopy(isort_lists))), list(reversed(deepcopy(bsort_lists))), list(reversed(deepcopy(ssort_lists)))]))
-    [isort_list, bsort_list, ssort_list] = list(map(strip_rests, [isort_list, bsort_list, ssort_list]))
-    [isort_list, bsort_list, ssort_list] = list(map(rm_dup_phrases, [isort_list, bsort_list, ssort_list]))
-    [isort_list, bsort_list, ssort_list] = list(map(lambda l: l[8:], [isort_list, bsort_list, ssort_list])) # Remove the first 8 quarter note phrase from each note list
-    [isort_list, bsort_list, ssort_list] = pad_to_longest([isort_list, bsort_list, ssort_list])
-    cello_note_list = notes_to_rests(isort_list)
-    #perc_note_list = deepcopy(cello_note_list)
-    for (part, note_list) in zip(melody_parts + (cello_part,),
-                                 [isort_list, bsort_list, ssort_list, cello_note_list]):
-        part.append(deepcopy(note_list))
+    # Reverse the order of the previous bars and remove all rests. This will leave 7 bars eight note melody of 4/4 in each part.
+    isort_lists, bsort_lists, ssort_lists = list(map(lambda l: list(map(strip_rests, l)), [isort_lists, bsort_lists, ssort_lists]))
+    isort_lists, bsort_lists, ssort_lists = [list(reversed(deepcopy(isort_lists))), list(reversed(deepcopy(bsort_lists))), list(reversed(deepcopy(ssort_lists)))]
+
+    isort_lists, bsort_lists, ssort_lists = list(map(rm_dup_phrases, [isort_lists, bsort_lists, ssort_lists]))
+    isort_lists, bsort_lists, ssort_lists = list(map(lambda l: l[1:], [isort_lists, bsort_lists, ssort_lists])) # Remove the first phrase from each note list
+    isort_lists, bsort_lists, ssort_lists = pad_to_longest_new([isort_lists, bsort_lists, ssort_lists])
+    cello_note_lists = list(map(notes_to_rests, isort_lists))
+
+    for (part, note_lists) in zip(melody_parts + (cello_part,),
+                                 [isort_lists, bsort_lists, ssort_lists, cello_note_lists]):
+        end_note = note_lists[-1][-1]
+        extend_end = deepcopy(end_note)
+        extend_end.quarterLength = 3
+        end_note.tie = tie.Tie('start')
+        extend_end.tie = tie.Tie('stop')
+        note_lists.append([extend_end, note.Rest(1)])
+        for note_list in note_lists: part.append(deepcopy(note_list))
         # for n in note_list:
         #     part.append(deepcopy(n))
     
     perc_note_list = [note.Unpitched(quarterLength=0.5), note.Unpitched(quarterLength=0.5), note.Unpitched(quarterLength=0.5), note.Unpitched(quarterLength=0.25),
                     note.Unpitched(quarterLength=0.5), note.Unpitched(quarterLength=0.5), note.Unpitched(quarterLength=0.5), note.Unpitched(quarterLength=0.5), note.Unpitched(quarterLength=0.25)]
-    for bar in isort_list[::8]:
+    for bar in isort_lists[:-1]:
         perc_part.append(deepcopy(perc_note_list))
+    perc_part.append([note.Unpitched(quarterLength=0.5), note.Unpitched(quarterLength=0.5), note.Unpitched(quarterLength=0.5), note.Unpitched(quarterLength=0.25),
+                    note.Unpitched(quarterLength=0.5), note.Unpitched(quarterLength=0.5), note.Unpitched(quarterLength=0.25), note.Rest(quarterLength=1)])
 
-    for (part, note_list) in zip(melody_parts + (cello_part,),
-                                [isort_list, bsort_list, ssort_list, cello_note_list]):
-        for n in note_list:
-            n.quarterLength *= 2
-
-        part.append(deepcopy(note_list))
+    # Reuse the parts just generated but gradually increase the time values of the notes every two bars for the first 6 bars, leaving the last bar as before
+    for (part, note_lists) in zip(melody_parts + (cello_part,),
+                                [isort_lists, bsort_lists, ssort_lists, cello_note_lists]):
+        for note_list in note_lists[0:2]:
+            for n in note_list: n.quarterLength *= 1.5
+        for note_list in note_lists[2:4]:
+            for n in note_list: n.quarterLength *= 2
+        for note_list in note_lists[4:5]:
+            for n in note_list: n.quarterLength *= 3
+        for note_list in note_lists[5:6]:
+            for n in note_list: n.quarterLength *= 4        
+        for note_list in note_lists:
+            part.append(deepcopy(note_list))
 
 
     score = stream.Score()
