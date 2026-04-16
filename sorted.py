@@ -22,6 +22,9 @@ ROMAN_NUMERALS = ['I', 'ii', 'iii', 'IV', 'V', 'vi', 'vii/o']
 
 DIATONIC_CHORDS = list(map(lambda n: roman.RomanNumeral(n+'13', 'C'), ROMAN_NUMERALS))
 
+CRASH_CYMBAL = 'F5'
+FLOOR_TOM = 'B4'
+
 def partition(a, pred):
    ain = []
    aout = []
@@ -127,7 +130,7 @@ def make_perc_solo(num_of_eights:int):
     eights = [0.5 for i in range(0, quot)]
     sixteenths = [0.25 for i in range(0, rem)] # Will be one sixteenth, or none
     figure =  eights + sixteenths + eights + sixteenths
-    figure_notes = [note.Unpitched(quarterLength=l, offset=None) for l in figure]
+    figure_notes = [note.Unpitched(FLOOR_TOM, quarterLength=l, offset=None) for l in figure]
     [n.articulations.append(articulations.Accent()) for n in figure_notes[::quot+rem]] 
     return figure_notes
 
@@ -170,10 +173,10 @@ def append_sect1_perc(part, note_list):
     l_perc_end = 0.5
     l_perc_rests = len(melody_notes) - l_perc_start - l_perc_end
     
-    perc_start = note.Unpitched(quarterLength=l_perc_start/2, offset=None) 
+    perc_start = note.Unpitched(FLOOR_TOM, quarterLength=l_perc_start/2, offset=None) 
     perc_start.articulations.append(articulations.Accent())  
     perc_rests = note.Rest(quarterLength=l_perc_rests/2, offset=None)
-    perc_end = note.Unpitched(quarterLength=l_perc_end/2, offset=None)
+    perc_end = note.Unpitched(FLOOR_TOM, quarterLength=l_perc_end/2, offset=None)
     # m = stream.Measure()
     # m.stafflines = 1
     part.append(meter.TimeSignature('4/4'))
@@ -181,7 +184,7 @@ def append_sect1_perc(part, note_list):
     # part.append(m.makeBeams())
 
 def make_sect2_perc(note_list):
-    rhythm_fig = [note.Unpitched(quarterLength=1.5), note.Unpitched(quarterLength=0.5), note.Unpitched(quarterLength=1.5), note.Unpitched(quarterLength=0.5)]
+    rhythm_fig = [note.Unpitched(FLOOR_TOM, quarterLength=1.5), note.Unpitched(FLOOR_TOM, quarterLength=0.5), note.Unpitched(FLOOR_TOM, quarterLength=1.5), note.Unpitched(FLOOR_TOM, quarterLength=0.5)]
     melody_rests, melody_notes = partition(note_list, lambda n: n.isRest)
     return melody_rests + rhythm_fig
 
@@ -208,14 +211,6 @@ def fill_last_bar(note_lists, bar_q_len=4):
     last_phrase_e_len = 2*(get_q_length(note_lists[-1]) + fill_q_len)
     pad_to_length(int(last_phrase_e_len), note_lists[-1])    
     return note_lists
-
-# def pad_to_longest(list_of_note_lists):
-#     # max_len = max(map(lambda nl: len(nl), list_of_note_lists))
-#     max_len = max(map(lambda nl: get_q_length(nl), list_of_note_lists))
-#     max_len_eight_notes = int(2*max_len)
-#     target_len = ceiling_multiple_of(8, max_len_eight_notes)
-#     return list(map(lambda nl: pad_to_length(target_len, nl), list_of_note_lists))
-
 
 def pad_to_longest(list_of_note_lists):
     # max_len = max(map(lambda nl: len(nl), list_of_note_lists))
@@ -271,12 +266,13 @@ def append_dynamics(melody_parts, harmony_parts):
     
     for h_part in harmony_parts:
         match h_part.partName:
-            case 'Flute' | 'Violin'| 'Violoncello': h_part.append(dynamics.Dynamic('mf'))
+            case 'Flute' | 'Violin': h_part.append(dynamics.Dynamic('mf'))
             case 'Trombone':
                 h_part.append(dynamics.Dynamic('mp'))
                 # te = expressions.TextExpression('With mute')
                 # te.enclosure = style.Enclosure.RECTANGLE
-                # h_part.append(te) 
+                # h_part.append(te)
+            case 'Violoncello': h_part.append(dynamics.Dynamic('ff'))
     return
 
 def make_score(key):
@@ -297,11 +293,11 @@ def make_score(key):
     violin_part = stream.Part(instrument.Violin())
     cello_part = stream.Part(instrument.Violoncello())
     tromb_part = stream.Part(instrument.Trombone())
-    perc_part = stream.Part(instrument.SnareDrum())
+    perc_part = stream.Part(instrument.UnpitchedPercussion())
 
     melody_parts = (flute_part, violin_part, tromb_part)
-    perc_part.append([clef.PercussionClef(), dynamics.Dynamic('mp')])
-    perc_part.staffLines = 1
+    perc_part.append([clef.PercussionClef(), dynamics.Dynamic('mf')])
+    #perc_part.staffLines = 2
 
     # # Intro Section
     # flute_intro = make_intro(deepcopy(isort_lists))
@@ -336,9 +332,14 @@ def make_score(key):
             append_cello_part(cello_part, deepcopy(note_list))
             append_sect1_perc(perc_part, deepcopy(note_list))
 
+
+
     # Section 2: Play the note lists in canon, with all rests intact
-    perc_note_lists = [make_sect2_perc(deepcopy(nl)) for nl in isort_lists]
-    perc_note_list = fill_last_bar(perc_note_lists)
+    for part in [flute_part, violin_part]: part.append(dynamics.Dynamic('f'))
+    for part in [tromb_part, perc_part]: part.append(dynamics.Dynamic('ff'))    
+
+    perc_note_lists = [make_sect2_perc(deepcopy(nl)) for nl in ssort_lists] # ssort_lists is the Trombone part, so percussion will outline that.
+
     # make sure total quarter note length of each list of lists is a multiple of 4
     isort_lists, bsort_lists, ssort_lists = list(map(lambda note_lists: fill_last_bar(note_lists), [isort_lists, bsort_lists, ssort_lists]))
     # concatenate all the sublists (which are of varying length) and then split them into phrases of 8 eight notes (4/4)
@@ -347,20 +348,28 @@ def make_score(key):
     # make sure each lists of lists contains the same number of phrases, adding rest bars if neccessary
     isort_lists, bsort_lists, ssort_lists = pad_to_longest([isort_lists, bsort_lists, ssort_lists])
 
+    # Fill out percussion part to length of the section
+    perc_part_q_len = sum(map(get_q_length, perc_note_lists))
+    sec2_q_len = sum(map(get_q_length, isort_lists))
+    perc_note_lists.append([note.Rest(sec2_q_len - perc_part_q_len)])
+
     cello_note_lists = list(map(notes_to_rests, isort_lists))
 
     for (part, note_lists) in zip(melody_parts + (cello_part, perc_part), [isort_lists, bsort_lists, ssort_lists, cello_note_lists, perc_note_lists]):
         for note_list in note_lists: part.append(deepcopy(note_list))
   
     # Section 3
-    # Reverse the order of the previous bars and remove all rests. This will leave 7 bars eight note melody of 4/4 in each part.
+    # Reuse the previous bars but remove all rests. This will leave 7 bars eight note melody of 4/4 in each part.
+    tromb_part.append(dynamics.Dynamic('mf'))
+    violin_part.append(dynamics.Dynamic('ff'))
+    perc_part.append(dynamics.Dynamic('ff'))
     isort_lists, bsort_lists, ssort_lists = list(map(lambda l: list(map(strip_rests, l)), [isort_lists, bsort_lists, ssort_lists]))
     concat_lists = list(map(concat, [isort_lists, bsort_lists, ssort_lists]))
     isort_lists, bsort_lists, ssort_lists = list(map(lambda n_l: split_every(8, n_l), concat_lists))    
-    isort_lists, bsort_lists, ssort_lists = [list(reversed(deepcopy(isort_lists))), list(reversed(deepcopy(bsort_lists))), list(reversed(deepcopy(ssort_lists)))]
+
 
     isort_lists, bsort_lists, ssort_lists = list(map(rm_dup_phrases, [isort_lists, bsort_lists, ssort_lists]))
-    isort_lists, bsort_lists, ssort_lists = list(map(lambda l: l[1:], [isort_lists, bsort_lists, ssort_lists])) # Remove the first phrase from each note list
+    #isort_lists, bsort_lists, ssort_lists = list(map(lambda l: l[1:], [isort_lists, bsort_lists, ssort_lists])) # Remove the first phrase from each note list
     isort_lists, bsort_lists, ssort_lists = pad_to_longest([isort_lists, bsort_lists, ssort_lists])
     cello_note_lists = list(map(notes_to_rests, isort_lists))
 
@@ -372,34 +381,52 @@ def make_score(key):
         end_note.tie = tie.Tie('start')
         extend_end.tie = tie.Tie('stop')
         note_lists.append([extend_end, note.Rest(1)])
-        for note_list in note_lists: part.append(deepcopy(note_list))
+        for note_list in note_lists:
+            note_list[0].articulations.append(articulations.Accent())
+            part.append(deepcopy(note_list))
 
     
-    perc_note_list = [note.Unpitched(quarterLength=0.5), note.Unpitched(quarterLength=0.5), note.Unpitched(quarterLength=0.5), note.Unpitched(quarterLength=0.25),
-                    note.Unpitched(quarterLength=0.5), note.Unpitched(quarterLength=0.5), note.Unpitched(quarterLength=0.5), note.Unpitched(quarterLength=0.5), note.Unpitched(quarterLength=0.25)]
+    perc_note_list = [note.Unpitched(FLOOR_TOM, quarterLength=0.5, articulations=[articulations.Accent()]), note.Unpitched(FLOOR_TOM, quarterLength=0.5),
+                      note.Unpitched(FLOOR_TOM, quarterLength=0.5), note.Unpitched(FLOOR_TOM, quarterLength=0.25), note.Unpitched(FLOOR_TOM, quarterLength=0.5),
+                      note.Unpitched(FLOOR_TOM, quarterLength=0.5), note.Unpitched(FLOOR_TOM, quarterLength=0.5),
+                      note.Unpitched(FLOOR_TOM, quarterLength=0.5, articulations=[articulations.Accent()]), note.Unpitched(FLOOR_TOM, quarterLength=0.25)]
+
     for bar in isort_lists[:-1]:
         perc_part.append(deepcopy(perc_note_list))
-    perc_part.append([note.Unpitched(quarterLength=0.5), note.Unpitched(quarterLength=0.5), note.Unpitched(quarterLength=0.5), note.Unpitched(quarterLength=0.25),
-                    note.Unpitched(quarterLength=0.5), note.Unpitched(quarterLength=0.5), note.Unpitched(quarterLength=0.25), note.Rest(quarterLength=1)])
+    perc_part.append([note.Unpitched(FLOOR_TOM, quarterLength=3, articulations=[articulations.Accent()]), note.Rest(quarterLength=1)])
 
-    # Reuse the parts just generated but gradually increase the time values of the notes every two bars for the first 6 bars, leaving the last bar as before
+    # Reuse the parts just generated but reverse bar order and gradually increase the time values of the notes every two bars for the first 6 bars, leaving the last bar as before
+    isort_lists, bsort_lists, ssort_lists = isort_lists[0:-1], bsort_lists[0:-1], ssort_lists[0:-1]
+    for note_lists in [isort_lists, bsort_lists, ssort_lists]: note_lists[-1][-1].tie = None
+    isort_lists, bsort_lists, ssort_lists = [list(reversed(deepcopy(isort_lists))), list(reversed(deepcopy(bsort_lists))), list(reversed(deepcopy(ssort_lists)))]
+
+
     for (part, note_lists) in zip(melody_parts + (cello_part,),
                                 [isort_lists, bsort_lists, ssort_lists, cello_note_lists]):
-        for note_list in note_lists[0:2]:
+        for note_list in note_lists[0:3]:
             for n in note_list: n.quarterLength *= 1.5
-        for note_list in note_lists[2:4]:
+            note_list[-1].articulations.append(articulations.Tenuto())
+            note_list.append(note.Rest(2))
+        for note_list in note_lists[3:5]:
             for n in note_list: n.quarterLength *= 2
-        for note_list in note_lists[4:5]:
-            for n in note_list: n.quarterLength *= 3
+            note_list[-1].articulations.append(articulations.Tenuto())
         for note_list in note_lists[5:6]:
-            for n in note_list: n.quarterLength *= 4        
-        for note_list in note_lists:
-            part.append(deepcopy(note_list))
+            for n in note_list: n.quarterLength *= 3
+            note_list[-1].articulations.append(articulations.Tenuto())
+        for note_list in note_lists[6:7]:
+            for n in note_list: n.quarterLength *= 4
+            note_list[-1].articulations.append(articulations.Tenuto())        
+        for note_list in note_lists: part.append(deepcopy(note_list))
+        note_lists[-1][-1].articulations.append(articulations.Staccato())
 
     score = stream.Score()
     for part in [flute_part, violin_part, tromb_part, cello_part, perc_part]:
         score.insert(part)
 
+    score.insert(0, metadata.Metadata())    
+    score.metadata.title = 'Insert bubble select'
+    score.metadata.subTitle = 'A sonification of 3 sorting algorithms'
+    score.metadata.composer = 'Brian Sheehan'
     score.show()
 
 make_score('C')
