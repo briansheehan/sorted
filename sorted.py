@@ -217,7 +217,7 @@ def fill_last_bar(note_lists, bar_q_len=4):
 #     return list(map(lambda nl: pad_to_length(target_len, nl), list_of_note_lists))
 
 
-def pad_to_longest_new(list_of_note_lists):
+def pad_to_longest(list_of_note_lists):
     # max_len = max(map(lambda nl: len(nl), list_of_note_lists))
     max_len = max(map(lambda nl: len(nl), list_of_note_lists))
     bar_length = get_q_length(list_of_note_lists[0][0])
@@ -259,13 +259,33 @@ def scale_q_length(n:note.Note, factor):
     n.quarterLength *= factor
     return n
 
+def append_dynamics(melody_parts, harmony_parts):
+    for m_part in melody_parts:
+        match m_part.partName:
+            case 'Flute' | 'Violin' | 'Violoncello': m_part.append(dynamics.Dynamic('f'))
+            case 'Trombone':
+                m_part.append(dynamics.Dynamic('mf'))
+                # te = expressions.TextExpression('Without mute')
+                # te.enclosure = style.Enclosure.RECTANGLE
+                # m_part.append(te)
+    
+    for h_part in harmony_parts:
+        match h_part.partName:
+            case 'Flute' | 'Violin'| 'Violoncello': h_part.append(dynamics.Dynamic('mf'))
+            case 'Trombone':
+                h_part.append(dynamics.Dynamic('mp'))
+                # te = expressions.TextExpression('With mute')
+                # te.enclosure = style.Enclosure.RECTANGLE
+                # h_part.append(te) 
+    return
+
 def make_score(key):
     arpegg_ii = make_arpeggio('ii', key)
     rootI, thirdI, fifthI = deepcopy(arpegg_ii[0:3])
     rootI.quarterLength = get_q_length(arpegg_ii)
     thirdI.quarterLength = get_q_length(arpegg_ii)
     fifthI.quarterLength = get_q_length(arpegg_ii)
-    random.seed(100)
+    #random.seed(100)
     #random.shuffle(arpegg_ii)
     arpegg_ii.sort(reverse=True)
 
@@ -292,11 +312,10 @@ def make_score(key):
     # Section 1
     for i, note_lists in enumerate([isort_lists, bsort_lists, ssort_lists]):
         melody_part = melody_parts[i]
-        harmony_parts = list(melody_parts)
+        harmony_parts = list(melody_parts) + [cello_part]
         harmony_parts.remove(melody_part)
-
-        melody_part.append(dynamics.Dynamic('mf'))
-        list(map(lambda part: part.append(dynamics.Dynamic('pp')), harmony_parts))     
+  
+        append_dynamics([melody_part], harmony_parts)
 
         for note_list in note_lists:
             (rests, notes) = partition(note_list, lambda n: n.isRest)
@@ -309,45 +328,40 @@ def make_score(key):
             melody_part.append(notes_copy)
             melody_part.insert(0, slur)
             for (hpart, hnote) in zip(harmony_parts, [fifthI, rootI]):
-                # hpart.append(note.Note(pitch, duration=duration.Duration(4)))
                 if len(rests) > 0:
                     hpart.append(meter.TimeSignature(f'{len(rests)}+{len(rests)}/16'))
                     hpart.append(deepcopy(rests))
                 hpart.append(meter.TimeSignature('4/4'))
                 hpart.append(deepcopy(hnote))
-            #perc_part.repeatAppend(note.Unpitched(duration=duration.Duration(0.5)), len(note_list))
             append_cello_part(cello_part, deepcopy(note_list))
-            # perc_part.append(make_perc_part(note_list))
             append_sect1_perc(perc_part, deepcopy(note_list))
 
-    # Section 2
-    # perc_note_lists = []
-    # for note_list in ssort_lists: # ssort_lists is the material used for the trombone part
-    #     perc_note_lists.append(make_sect2_perc(deepcopy(note_list)))
-    perc_note_lists = [make_sect2_perc(deepcopy(nl)) for nl in isort_lists] 
- 
-    #[isort_list, bsort_list, ssort_list, perc_note_list] = list(map(concat, [isort_lists, bsort_lists, ssort_lists, perc_note_lists]))
+    # Section 2: Play the note lists in canon, with all rests intact
+    perc_note_lists = [make_sect2_perc(deepcopy(nl)) for nl in isort_lists]
+    perc_note_list = fill_last_bar(perc_note_lists)
+    # make sure total quarter note length of each list of lists is a multiple of 4
     isort_lists, bsort_lists, ssort_lists = list(map(lambda note_lists: fill_last_bar(note_lists), [isort_lists, bsort_lists, ssort_lists]))
-    #[isort_list, bsort_list, ssort_list, perc_note_list] = pad_to_longest([isort_list, bsort_list, ssort_list, perc_note_list])
+    # concatenate all the sublists (which are of varying length) and then split them into phrases of 8 eight notes (4/4)
     concat_lists = list(map(concat, [isort_lists, bsort_lists, ssort_lists]))
-    isort_lists, bsort_lists, ssort_lists = list(map(lambda n_l: split_every(8, n_l), concat_lists))    
-    isort_lists, bsort_lists, ssort_lists = pad_to_longest_new([isort_lists, bsort_lists, ssort_lists])
-    #perc_note_lists = [make_sect2_perc(deepcopy(nl)) for nl in ssort_lists]
+    isort_lists, bsort_lists, ssort_lists = list(map(lambda n_l: split_every(8, n_l), concat_lists))
+    # make sure each lists of lists contains the same number of phrases, adding rest bars if neccessary
+    isort_lists, bsort_lists, ssort_lists = pad_to_longest([isort_lists, bsort_lists, ssort_lists])
+
     cello_note_lists = list(map(notes_to_rests, isort_lists))
 
     for (part, note_lists) in zip(melody_parts + (cello_part, perc_part), [isort_lists, bsort_lists, ssort_lists, cello_note_lists, perc_note_lists]):
         for note_list in note_lists: part.append(deepcopy(note_list))
-        # for n in note_list:
-        #     part.append(deepcopy(n))
   
     # Section 3
     # Reverse the order of the previous bars and remove all rests. This will leave 7 bars eight note melody of 4/4 in each part.
     isort_lists, bsort_lists, ssort_lists = list(map(lambda l: list(map(strip_rests, l)), [isort_lists, bsort_lists, ssort_lists]))
+    concat_lists = list(map(concat, [isort_lists, bsort_lists, ssort_lists]))
+    isort_lists, bsort_lists, ssort_lists = list(map(lambda n_l: split_every(8, n_l), concat_lists))    
     isort_lists, bsort_lists, ssort_lists = [list(reversed(deepcopy(isort_lists))), list(reversed(deepcopy(bsort_lists))), list(reversed(deepcopy(ssort_lists)))]
 
     isort_lists, bsort_lists, ssort_lists = list(map(rm_dup_phrases, [isort_lists, bsort_lists, ssort_lists]))
     isort_lists, bsort_lists, ssort_lists = list(map(lambda l: l[1:], [isort_lists, bsort_lists, ssort_lists])) # Remove the first phrase from each note list
-    isort_lists, bsort_lists, ssort_lists = pad_to_longest_new([isort_lists, bsort_lists, ssort_lists])
+    isort_lists, bsort_lists, ssort_lists = pad_to_longest([isort_lists, bsort_lists, ssort_lists])
     cello_note_lists = list(map(notes_to_rests, isort_lists))
 
     for (part, note_lists) in zip(melody_parts + (cello_part,),
@@ -359,8 +373,7 @@ def make_score(key):
         extend_end.tie = tie.Tie('stop')
         note_lists.append([extend_end, note.Rest(1)])
         for note_list in note_lists: part.append(deepcopy(note_list))
-        # for n in note_list:
-        #     part.append(deepcopy(n))
+
     
     perc_note_list = [note.Unpitched(quarterLength=0.5), note.Unpitched(quarterLength=0.5), note.Unpitched(quarterLength=0.5), note.Unpitched(quarterLength=0.25),
                     note.Unpitched(quarterLength=0.5), note.Unpitched(quarterLength=0.5), note.Unpitched(quarterLength=0.5), note.Unpitched(quarterLength=0.5), note.Unpitched(quarterLength=0.25)]
@@ -383,7 +396,6 @@ def make_score(key):
         for note_list in note_lists:
             part.append(deepcopy(note_list))
 
-
     score = stream.Score()
     for part in [flute_part, violin_part, tromb_part, cello_part, perc_part]:
         score.insert(part)
@@ -391,34 +403,3 @@ def make_score(key):
     score.show()
 
 make_score('C')
-
-
-def mergeSort(arr):
-  if len(arr) <= 1:
-    return arr
-
-  mid = len(arr) // 2
-  leftHalf = arr[:mid]
-  rightHalf = arr[mid:]
-
-  sortedLeft = mergeSort(leftHalf)
-  sortedRight = mergeSort(rightHalf)
-
-  return merge(sortedLeft, sortedRight)
-
-def merge(left, right):
-  result = []
-  i = j = 0
-
-  while i < len(left) and j < len(right):
-    if left[i] < right[j]:
-      result.append(left[i])
-      i += 1
-    else:
-      result.append(right[j])
-      j += 1
-
-  result.extend(left[i:])
-  result.extend(right[j:])
-
-  return result
