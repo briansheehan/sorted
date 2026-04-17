@@ -22,8 +22,8 @@ ROMAN_NUMERALS = ['I', 'ii', 'iii', 'IV', 'V', 'vi', 'vii/o']
 
 DIATONIC_CHORDS = list(map(lambda n: roman.RomanNumeral(n+'13', 'C'), ROMAN_NUMERALS))
 
-CRASH_CYMBAL = 'F5'
-FLOOR_TOM = 'B4'
+CRASH_CYMBAL = 'A5'
+FLOOR_TOM = 'A4'
 
 def partition(a, pred):
    ain = []
@@ -385,24 +385,36 @@ def make_score(key):
             note_list[0].articulations.append(articulations.Accent())
             part.append(deepcopy(note_list))
 
-    
-    perc_note_list = [note.Unpitched(FLOOR_TOM, quarterLength=0.5, articulations=[articulations.Accent()]), note.Unpitched(FLOOR_TOM, quarterLength=0.5),
+    perc_note_list = [note.Unpitched(FLOOR_TOM, quarterLength=0.5), note.Unpitched(FLOOR_TOM, quarterLength=0.5),
                       note.Unpitched(FLOOR_TOM, quarterLength=0.5), note.Unpitched(FLOOR_TOM, quarterLength=0.25), note.Unpitched(FLOOR_TOM, quarterLength=0.5),
                       note.Unpitched(FLOOR_TOM, quarterLength=0.5), note.Unpitched(FLOOR_TOM, quarterLength=0.5),
                       note.Unpitched(FLOOR_TOM, quarterLength=0.5, articulations=[articulations.Accent()]), note.Unpitched(FLOOR_TOM, quarterLength=0.25)]
+    perc_note_list[0].articulations.append(articulations.Accent())
+    perc_note_list[-2].articulations.append(articulations.Accent())
 
-    for bar in isort_lists[:-1]:
+    for phrase in isort_lists[:-1]:
         perc_part.append(deepcopy(perc_note_list))
-    perc_part.append([note.Unpitched(FLOOR_TOM, quarterLength=3, articulations=[articulations.Accent()]), note.Rest(quarterLength=1)])
+    perc_note_list = [note.Unpitched(FLOOR_TOM, quarterLength=3), note.Rest(quarterLength=1)]
+    perc_note_list[0].articulations.append(articulations.Accent())
+    perc_part.append(perc_note_list)
 
     # Reuse the parts just generated but reverse bar order and gradually increase the time values of the notes every two bars for the first 6 bars, leaving the last bar as before
     isort_lists, bsort_lists, ssort_lists = isort_lists[0:-1], bsort_lists[0:-1], ssort_lists[0:-1]
     for note_lists in [isort_lists, bsort_lists, ssort_lists]: note_lists[-1][-1].tie = None
     isort_lists, bsort_lists, ssort_lists = [list(reversed(deepcopy(isort_lists))), list(reversed(deepcopy(bsort_lists))), list(reversed(deepcopy(ssort_lists)))]
 
+    perc_note_lists = []
+    for phrase in isort_lists:
+        perc_note_lists.append([note.Unpitched(CRASH_CYMBAL, quarterLength=4, notehead='cross')])
+    for n_l in perc_note_lists:
+        for n in n_l:
+            n.notehead = 'x'
+            n.noteheadFill = True
+            n.expressions.append(expressions.Tremolo())
 
-    for (part, note_lists) in zip(melody_parts + (cello_part,),
-                                [isort_lists, bsort_lists, ssort_lists, cello_note_lists]):
+
+    for (part, note_lists) in zip(melody_parts + (cello_part, perc_part),
+                                [isort_lists, bsort_lists, ssort_lists, cello_note_lists, perc_note_lists]):
         for note_list in note_lists[0:3]:
             for n in note_list: n.quarterLength *= 1.5
             note_list[-1].articulations.append(articulations.Tenuto())
@@ -420,12 +432,12 @@ def make_score(key):
         note_lists[-1][-1].articulations.append(articulations.Staccato())
 
     score = stream.Score()
+
     for part in [flute_part, violin_part, tromb_part, cello_part, perc_part]:
         score.insert(part)
 
     score.insert(0, metadata.Metadata())    
-    score.metadata.title = 'Insert bubble select'
-    score.metadata.subTitle = 'A sonification of 3 sorting algorithms'
+    score.metadata.title = 'Insert bubble select: sonifying 3 sorting algorithms'
     score.metadata.composer = 'Brian Sheehan'
     score.show()
 
