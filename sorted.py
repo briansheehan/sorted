@@ -97,7 +97,7 @@ def get_q_length(note_list):
 
 CELLO_RHYTHM = [1, 0.5, 0.5, 1, 0.25, 0.25, 0.25, 0.25]
 
-def append_cello_part(part, note_list):
+def append_sect1_cello(part, note_list):
     rests = [n for n in note_list if n.isRest]
     all_notes = [n.transpose('-P15') for n in note_list if not n.isRest] # Transpose all notes down 2 octaves
     note1, note4, note7 = all_notes[::3] # take every third note from the 8-note source material
@@ -184,9 +184,37 @@ def append_sect1_perc(part, note_list):
     # part.append(m.makeBeams())
 
 def make_sect2_perc(note_list):
-    rhythm_fig = [note.Unpitched(FLOOR_TOM, quarterLength=1.5), note.Unpitched(FLOOR_TOM, quarterLength=0.5), note.Unpitched(FLOOR_TOM, quarterLength=1.5), note.Unpitched(FLOOR_TOM, quarterLength=0.5)]
+    rhythm_fig = [note.Unpitched(FLOOR_TOM, quarterLength=1.5), note.Unpitched(FLOOR_TOM, quarterLength=0.5),
+                  note.Unpitched(FLOOR_TOM, quarterLength=1.5), note.Unpitched(FLOOR_TOM, quarterLength=0.5)]
     melody_rests, melody_notes = partition(note_list, lambda n: n.isRest)
     return melody_rests + rhythm_fig
+
+def make_sect2_cello(note_list):
+    melody_rests, melody_notes = partition(note_list, lambda n: n.isRest)
+    for n in melody_notes: n.transpose('-P15', inPlace=True) # Transpose melody notes down an octave
+    note1, note4, note5, note8 = melody_notes[0], melody_notes[3], melody_notes[4], melody_notes[7]
+    note1.quarterLength = note5.quarterLength = 1.5; note4.quarterLength = note8.quarterLength = 0.5
+
+    return melody_rests + [note5, note4, note1, note8]    
+
+def make_sect3_perc():
+    perc_note_list = [note.Unpitched(FLOOR_TOM, quarterLength=0.5), note.Unpitched(FLOOR_TOM, quarterLength=0.5),
+                    note.Unpitched(FLOOR_TOM, quarterLength=0.5), note.Unpitched(FLOOR_TOM, quarterLength=0.25), note.Unpitched(FLOOR_TOM, quarterLength=0.5),
+                    note.Unpitched(FLOOR_TOM, quarterLength=0.5), note.Unpitched(FLOOR_TOM, quarterLength=0.5),
+                    note.Unpitched(FLOOR_TOM, quarterLength=0.5), note.Unpitched(FLOOR_TOM, quarterLength=0.25)]
+    return perc_note_list
+
+def make_sect3_cello():
+    note_list = [note.Rest(1.5), note.Note('A2', quarterLength=0.25), note.Note('A2', quarterLength=0.5),
+                 note.Rest(1), note.Note('A2', quarterLength=0.5), note.Note('A2', quarterLength=0.25)]
+    for n in note_list: n.articulations.append(articulations.Staccato())
+    return note_list
+
+
+def make_sect4_cello(note):
+    note.quarterLength = 4
+    note.transpose('-P15', inPlace=True)
+    return [note]
 
 def concat(list_of_lists):
     return sum(list_of_lists, [])
@@ -319,17 +347,14 @@ def make_score(key):
                 melody_part.append(meter.TimeSignature(f'{len(rests)}+{len(rests)}/16'))
                 melody_part.append(deepcopy(rests))
             melody_part.append(meter.TimeSignature('4/4'))
-            notes_copy = deepcopy(notes) 
-            slur = spanner.Slur(notes_copy)
-            melody_part.append(notes_copy)
-            melody_part.insert(0, slur)
+            melody_part.append(deepcopy(notes))
             for (hpart, hnote) in zip(harmony_parts, [fifthI, rootI]):
                 if len(rests) > 0:
                     hpart.append(meter.TimeSignature(f'{len(rests)}+{len(rests)}/16'))
                     hpart.append(deepcopy(rests))
                 hpart.append(meter.TimeSignature('4/4'))
                 hpart.append(deepcopy(hnote))
-            append_cello_part(cello_part, deepcopy(note_list))
+            append_sect1_cello(cello_part, deepcopy(note_list))
             append_sect1_perc(perc_part, deepcopy(note_list))
 
 
@@ -339,7 +364,8 @@ def make_score(key):
     for part in [tromb_part, perc_part]: part.append(dynamics.Dynamic('ff'))    
 
     perc_note_lists = [make_sect2_perc(deepcopy(nl)) for nl in ssort_lists] # ssort_lists is the Trombone part, so percussion will outline that.
-
+    cello_note_lists = [make_sect2_cello(deepcopy(nl)) for nl in ssort_lists]
+    #perc_note_lists[0] = 
     # make sure total quarter note length of each list of lists is a multiple of 4
     isort_lists, bsort_lists, ssort_lists = list(map(lambda note_lists: fill_last_bar(note_lists), [isort_lists, bsort_lists, ssort_lists]))
     # concatenate all the sublists (which are of varying length) and then split them into phrases of 8 eight notes (4/4)
@@ -348,12 +374,11 @@ def make_score(key):
     # make sure each lists of lists contains the same number of phrases, adding rest bars if neccessary
     isort_lists, bsort_lists, ssort_lists = pad_to_longest([isort_lists, bsort_lists, ssort_lists])
 
-    # Fill out percussion part to length of the section
+    # Fill out percussion and cello parts to length of the section
     perc_part_q_len = sum(map(get_q_length, perc_note_lists))
     sec2_q_len = sum(map(get_q_length, isort_lists))
     perc_note_lists.append([note.Rest(sec2_q_len - perc_part_q_len)])
-
-    cello_note_lists = list(map(notes_to_rests, isort_lists))
+    cello_note_lists.append([note.Rest(sec2_q_len - perc_part_q_len)])
 
     for (part, note_lists) in zip(melody_parts + (cello_part, perc_part), [isort_lists, bsort_lists, ssort_lists, cello_note_lists, perc_note_lists]):
         for note_list in note_lists: part.append(deepcopy(note_list))
@@ -371,10 +396,11 @@ def make_score(key):
     isort_lists, bsort_lists, ssort_lists = list(map(rm_dup_phrases, [isort_lists, bsort_lists, ssort_lists]))
     #isort_lists, bsort_lists, ssort_lists = list(map(lambda l: l[1:], [isort_lists, bsort_lists, ssort_lists])) # Remove the first phrase from each note list
     isort_lists, bsort_lists, ssort_lists = pad_to_longest([isort_lists, bsort_lists, ssort_lists])
-    cello_note_lists = list(map(notes_to_rests, isort_lists))
+    cello_note_lists = [make_sect3_cello() for nl in isort_lists]
+    perc_note_lists = [make_sect3_perc() for nl in isort_lists] 
 
-    for (part, note_lists) in zip(melody_parts + (cello_part,),
-                                 [isort_lists, bsort_lists, ssort_lists, cello_note_lists]):
+    for (part, note_lists) in zip(melody_parts + (cello_part, perc_part),
+                                 [isort_lists, bsort_lists, ssort_lists, cello_note_lists, perc_note_lists]):
         end_note = note_lists[-1][-1]
         extend_end = deepcopy(end_note)
         extend_end.quarterLength = 3
@@ -385,23 +411,16 @@ def make_score(key):
             note_list[0].articulations.append(articulations.Accent())
             part.append(deepcopy(note_list))
 
-    perc_note_list = [note.Unpitched(FLOOR_TOM, quarterLength=0.5), note.Unpitched(FLOOR_TOM, quarterLength=0.5),
-                      note.Unpitched(FLOOR_TOM, quarterLength=0.5), note.Unpitched(FLOOR_TOM, quarterLength=0.25), note.Unpitched(FLOOR_TOM, quarterLength=0.5),
-                      note.Unpitched(FLOOR_TOM, quarterLength=0.5), note.Unpitched(FLOOR_TOM, quarterLength=0.5),
-                      note.Unpitched(FLOOR_TOM, quarterLength=0.5, articulations=[articulations.Accent()]), note.Unpitched(FLOOR_TOM, quarterLength=0.25)]
-    perc_note_list[0].articulations.append(articulations.Accent())
-    perc_note_list[-2].articulations.append(articulations.Accent())
-
-    for phrase in isort_lists[:-1]:
-        perc_part.append(deepcopy(perc_note_list))
-    perc_note_list = [note.Unpitched(FLOOR_TOM, quarterLength=3), note.Rest(quarterLength=1)]
-    perc_note_list[0].articulations.append(articulations.Accent())
-    perc_part.append(perc_note_list)
-
+    # Section 4
     # Reuse the parts just generated but reverse bar order and gradually increase the time values of the notes every two bars for the first 6 bars, leaving the last bar as before
     isort_lists, bsort_lists, ssort_lists = isort_lists[0:-1], bsort_lists[0:-1], ssort_lists[0:-1]
     for note_lists in [isort_lists, bsort_lists, ssort_lists]: note_lists[-1][-1].tie = None
     isort_lists, bsort_lists, ssort_lists = [list(reversed(deepcopy(isort_lists))), list(reversed(deepcopy(bsort_lists))), list(reversed(deepcopy(ssort_lists)))]
+
+    cello_note_lists = [make_sect4_cello(deepcopy(n)) for n in isort_lists[-1][1:]]
+    last_cello_note = deepcopy(cello_note_lists[-1][-1])
+    last_cello_note.quarterLength = 0.5
+    cello_note_lists.append([last_cello_note, note.Rest(3.5)])
 
     perc_note_lists = []
     for phrase in isort_lists:
@@ -428,8 +447,8 @@ def make_score(key):
         for note_list in note_lists[6:7]:
             for n in note_list: n.quarterLength *= 4
             note_list[-1].articulations.append(articulations.Tenuto())        
+        note_lists[-1][-1].articulations.append(articulations.Accent())
         for note_list in note_lists: part.append(deepcopy(note_list))
-        note_lists[-1][-1].articulations.append(articulations.Staccato())
 
     score = stream.Score()
 
