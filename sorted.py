@@ -4,24 +4,6 @@ import random
 import importlib as imp
 import math
 
-MUSE4_SCORES = '/home/brian/Documents/MuseScore4/Scores/'
-CHORD_SCORE = 'Diatonic Sevenths-Piano.mxl'
-
-# https://music21.org/music21docs/moduleReference/moduleHarmony.html#chordsymbol
-
-CHORD_SYMBOLS = ['', 'm', '+', 'dim', '7',
-           'M7', 'm7', 'dim7', '7+', 'm7b5',  # half-diminished
-           'mM7', '6', 'm6', '9', 'Maj9', 'm9',
-           '11', 'Maj11', 'm11', '13',
-           'Maj13', 'm13', 'sus2', 'sus4',
-           'N6', 'It+6', 'Fr+6', 'Gr+6', 'pedal',
-           'power', 'tristan', '/E', 'm7/E-', 'add2',
-           '7omit3',]
-
-ROMAN_NUMERALS = ['I', 'ii', 'iii', 'IV', 'V', 'vi', 'vii/o']
-
-DIATONIC_CHORDS = list(map(lambda n: roman.RomanNumeral(n+'13', 'C'), ROMAN_NUMERALS))
-
 CRASH_CYMBAL = 'A5'
 FLOOR_TOM = 'A4'
 
@@ -111,7 +93,7 @@ def append_sect1_cello(part, note_list):
 
     if len(rests) > 0:
         part.append(meter.TimeSignature(f'{len(rests)}+{len(rests)}/16'))
-        part.append(rests)
+        part.append(note.Rest(get_q_length(rests)))
     part.append(meter.TimeSignature('4/4'))
     part.append(cello_notes)
 
@@ -212,9 +194,9 @@ def make_sect3_cello():
 
 
 def make_sect4_cello(note):
-    note.quarterLength = 4
+    note.quarterLength = 1
     note.transpose('-P15', inPlace=True)
-    return [note]
+    return [note, deepcopy(note), deepcopy(note), deepcopy(note)]
 
 def concat(list_of_lists):
     return sum(list_of_lists, [])
@@ -288,18 +270,13 @@ def append_dynamics(melody_parts, harmony_parts):
             case 'Flute' | 'Violin' | 'Violoncello': m_part.append(dynamics.Dynamic('f'))
             case 'Trombone':
                 m_part.append(dynamics.Dynamic('mf'))
-                # te = expressions.TextExpression('Without mute')
-                # te.enclosure = style.Enclosure.RECTANGLE
-                # m_part.append(te)
     
     for h_part in harmony_parts:
         match h_part.partName:
             case 'Flute' | 'Violin': h_part.append(dynamics.Dynamic('mf'))
             case 'Trombone':
                 h_part.append(dynamics.Dynamic('mp'))
-                # te = expressions.TextExpression('With mute')
-                # te.enclosure = style.Enclosure.RECTANGLE
-                # h_part.append(te)
+
             case 'Violoncello': h_part.append(dynamics.Dynamic('ff'))
     return
 
@@ -334,6 +311,7 @@ def make_score(key):
 
 
     # Section 1
+   
     for i, note_lists in enumerate([isort_lists, bsort_lists, ssort_lists]):
         melody_part = melody_parts[i]
         harmony_parts = list(melody_parts) + [cello_part]
@@ -345,18 +323,19 @@ def make_score(key):
             (rests, notes) = partition(note_list, lambda n: n.isRest)
             if len(rests) > 0:
                 melody_part.append(meter.TimeSignature(f'{len(rests)}+{len(rests)}/16'))
-                melody_part.append(deepcopy(rests))
+                #melody_part.append(deepcopy(rests))
+                melody_part.append(note.Rest(get_q_length(rests)))
             melody_part.append(meter.TimeSignature('4/4'))
             melody_part.append(deepcopy(notes))
             for (hpart, hnote) in zip(harmony_parts, [fifthI, rootI]):
                 if len(rests) > 0:
                     hpart.append(meter.TimeSignature(f'{len(rests)}+{len(rests)}/16'))
-                    hpart.append(deepcopy(rests))
+                    #hpart.append(deepcopy(rests))
+                    hpart.append(note.Rest(get_q_length(rests)))
                 hpart.append(meter.TimeSignature('4/4'))
                 hpart.append(deepcopy(hnote))
             append_sect1_cello(cello_part, deepcopy(note_list))
             append_sect1_perc(perc_part, deepcopy(note_list))
-
 
 
     # Section 2: Play the note lists in canon, with all rests intact
@@ -365,7 +344,6 @@ def make_score(key):
 
     perc_note_lists = [make_sect2_perc(deepcopy(nl)) for nl in ssort_lists] # ssort_lists is the Trombone part, so percussion will outline that.
     cello_note_lists = [make_sect2_cello(deepcopy(nl)) for nl in ssort_lists]
-    #perc_note_lists[0] = 
     # make sure total quarter note length of each list of lists is a multiple of 4
     isort_lists, bsort_lists, ssort_lists = list(map(lambda note_lists: fill_last_bar(note_lists), [isort_lists, bsort_lists, ssort_lists]))
     # concatenate all the sublists (which are of varying length) and then split them into phrases of 8 eight notes (4/4)
@@ -394,7 +372,6 @@ def make_score(key):
 
 
     isort_lists, bsort_lists, ssort_lists = list(map(rm_dup_phrases, [isort_lists, bsort_lists, ssort_lists]))
-    #isort_lists, bsort_lists, ssort_lists = list(map(lambda l: l[1:], [isort_lists, bsort_lists, ssort_lists])) # Remove the first phrase from each note list
     isort_lists, bsort_lists, ssort_lists = pad_to_longest([isort_lists, bsort_lists, ssort_lists])
     cello_note_lists = [make_sect3_cello() for nl in isort_lists]
     perc_note_lists = [make_sect3_perc() for nl in isort_lists] 
@@ -430,6 +407,8 @@ def make_score(key):
             n.notehead = 'x'
             n.noteheadFill = True
             n.expressions.append(expressions.Tremolo())
+    perc_note_lists[-1][-1].expressions.remove(expressions.Tremolo())
+    perc_note_lists[-1][-1].expressions.append(expressions.TextExpression('Let ring'))
 
 
     for (part, note_lists) in zip(melody_parts + (cello_part, perc_part),
@@ -453,6 +432,7 @@ def make_score(key):
     score = stream.Score()
 
     for part in [flute_part, violin_part, tromb_part, cello_part, perc_part]:
+        part.makeRests(inPlace=True)
         score.insert(part)
 
     score.insert(0, metadata.Metadata())    
